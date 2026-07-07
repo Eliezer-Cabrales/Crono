@@ -112,7 +112,7 @@ def get_weekly_range_storage_name(monday):
                  9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"}
     
     if monday.month == sunday.month:
-        return f"{monday.day}-{sunday.day}-de-{months_es[monday.month]}"
+        return f"{monday.day}-a-{sunday.day}-de-{months_es[monday.month]}"
     else:
         return f"{monday.day}-de-{months_es[monday.month]}-a-{sunday.day}-de-{months_es[sunday.month]}"
 
