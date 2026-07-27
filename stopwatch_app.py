@@ -1,8 +1,3 @@
-¡Por supuesto! Aquí tienes el archivo **`stopwatch_app.py`** completo y corregido, listo para que lo copies y pegues directamente.
-
-He cambiado los `"pointinghand"` por `"hand2"` para que funcione perfecto en Windows:
-
-```python
 import tkinter as tk
 from tkinter import ttk
 import time
@@ -12,14 +7,12 @@ from scraper import get_meeting_data
 class StopwatchApp:
     def __init__(self, root):
         self.root = root
-        # 1. Cambio de nombre a Rahab
         self.root.title("Rahab - Panel de Control")
-        self.root.geometry("650x450") # Un poco más de altura para los nuevos botones
+        self.root.geometry("750x520") # Ampliado para dar cabida a la tabla y sección de mensajes
         
         # --- CONFIGURATION VARIABLES (Settings) ---
-        # 2. Cuenta Progresiva por defecto
-        self.timer_mode = tk.StringVar(value="Progresiva") # Options: "Regresiva" or "Progresiva"
-        self.target_monitor = tk.StringVar(value="")      # Will hold dynamic screen settings string
+        self.timer_mode = tk.StringVar(value="Progresiva") 
+        self.target_monitor = tk.StringVar(value="")      
         
         # State management variables
         self.is_running = False
@@ -28,10 +21,19 @@ class StopwatchApp:
         self.total_duration = 0.0     
         self.display_window = None
         self.display_label = None
+        self.display_msg_label = None
         self.last_update_time = 0.0
+        self._drag_item = None
 
-        # Fetch data from the web scraper
-        self.assignments = get_meeting_data() or []
+        # Fetch data from the web scraper (añadimos campo 'actual' para el tiempo real)
+        raw_data = get_meeting_data() or []
+        self.assignments = []
+        for item in raw_data:
+            self.assignments.append({
+                "title": item["title"],
+                "duration_mins": item["duration_mins"],
+                "actual_seconds": 0.0
+            })
 
         # --- 1. TOP BAR CONTAINER ---
         top_bar = ttk.Frame(root, padding=(10, 5))
@@ -43,7 +45,6 @@ class StopwatchApp:
             self.gear_icon = tk.PhotoImage(file="gear.png")
             settings_btn = tk.Label(top_bar, image=self.gear_icon, cursor="hand2")
         except tk.TclError:
-            print("Warning: 'gear.png' not found. Falling back to text icon.")
             settings_btn = tk.Label(top_bar, text="⚙", font=("Arial", 14), cursor="hand2")
         
         settings_btn.bind("<Button-1>", lambda event: self.open_settings())
@@ -55,53 +56,119 @@ class StopwatchApp:
         main_container = ttk.Frame(root)
         main_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        # Left Panel: Assignment List
+        # Left Panel: Assignment Table & Controls
         left_frame = ttk.Frame(main_container, padding=10)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         ttk.Label(left_frame, text="Asignaciones de la Reunión:", font=("Arial", 11, "bold")).pack(anchor=tk.W, pady=5)
         
-        self.listbox = tk.Listbox(left_frame, font=("Arial", 10), selectmode=tk.SINGLE)
-        self.listbox.pack(fill=tk.BOTH, expand=True, pady=5)
+        # --- TABLA TREEVIEW ---
+        columns = ("title", "duration", "actual")
+        self.tree = ttk.Treeview(left_frame, columns=columns, show="headings", selectmode="browse")
+        self.tree.heading("title", text="Asignación")
+        self.tree.heading("duration", text="Prev.")
+        self.tree.heading("actual", text="Real")
         
-        # 4. BOTONES PARA AÑADIR/ELIMINAR ASIGNACIONES MANUALMENTE
+        self.tree.column("title", width=190, anchor="w")
+        self.tree.column("duration", width=55, anchor="center")
+        self.tree.column("actual", width=55, anchor="center")
+        
+        self.tree.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Bindings para Drag & Drop y selección
+        self.tree.bind("<<TreeviewSelect>>", self.on_assignment_selected)
+        self.tree.bind("<Button-1>", self.on_tree_press)
+        self.tree.bind("<ButtonRelease-1>", self.on_tree_release)
+
+        # --- PANEL DE BOTONES (Añadir, Editar, Eliminar, Subir, Bajar) ---
         btn_frame = ttk.Frame(left_frame)
         btn_frame.pack(fill=tk.X, pady=5)
-        ttk.Button(btn_frame, text="+ Añadir", command=self.open_add_slot).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
-        ttk.Button(btn_frame, text="- Eliminar", command=self.delete_slot).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(2, 0))
+        
+        ttk.Button(btn_frame, text="+ Añadir", command=self.open_add_slot).grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+        ttk.Button(btn_frame, text="✏ Editar", command=self.edit_slot).grid(row=0, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Button(btn_frame, text="- Elim.", command=self.delete_slot).grid(row=0, column=2, padx=2, pady=2, sticky="ew")
+        
+        ttk.Button(btn_frame, text="↑ Subir", command=self.move_up).grid(row=1, column=0, padx=2, pady=2, sticky="ew")
+        ttk.Button(btn_frame, text="↓ Bajar", command=self.move_down).grid(row=1, column=1, columnspan=2, padx=2, pady=2, sticky="ew")
 
-        self.refresh_listbox()
-        self.listbox.bind('<<ListboxSelect>>', self.on_assignment_selected)
+        btn_frame.columnconfigure(0, weight=1)
+        btn_frame.columnconfigure(1, weight=1)
+        btn_frame.columnconfigure(2, weight=1)
 
-        # Right Panel: Timer and Execution Buttons
+        # Right Panel: Timer, Execution Buttons & Message Box
         right_frame = ttk.Frame(main_container, padding=10)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
         ttk.Label(right_frame, text="Tiempo:", font=("Arial", 11, "bold")).pack(pady=5)
         
-        self.local_clock_label = ttk.Label(right_frame, text="00:00.00", font=("Arial", 36, "bold"))
-        self.local_clock_label.pack(pady=15)
+        self.local_clock_label = ttk.Label(right_frame, text="00:00.00", font=("Arial", 32, "bold"))
+        self.local_clock_label.pack(pady=10)
 
         self.toggle_button = ttk.Button(right_frame, text="Iniciar / Parar", command=self.toggle)
-        self.toggle_button.pack(pady=5, fill=tk.X)
+        self.toggle_button.pack(pady=3, fill=tk.X)
+
+        self.reset_button = ttk.Button(right_frame, text="🔄 Reiniciar", command=self.reset_timer_state)
+        self.reset_button.pack(pady=3, fill=tk.X)
         
-        ttk.Button(right_frame, text="Abrir Segunda Pantalla", command=self.open_second_screen).pack(pady=5, fill=tk.X)
+        ttk.Button(right_frame, text="Abrir Segunda Pantalla", command=self.open_second_screen).pack(pady=10, fill=tk.X)
 
+        # --- SECCIÓN DE MENSAJES FLOTANTES ---
+        msg_frame = ttk.LabelFrame(right_frame, text="Mensaje para Pantalla Flotante", padding=5)
+        msg_frame.pack(fill=tk.X, pady=5)
+        
+        self.msg_entry = ttk.Entry(msg_frame)
+        self.msg_entry.pack(fill=tk.X, padx=2, pady=2)
+        
+        msg_btn_frame = ttk.Frame(msg_frame)
+        msg_btn_frame.pack(fill=tk.X, pady=2)
+        ttk.Button(msg_btn_frame, text="Enviar Mensaje", command=self.send_floating_message).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        ttk.Button(msg_btn_frame, text="Limpiar", command=self.clear_floating_message).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=1)
+
+        self.refresh_table()
         if self.assignments:
-            self.listbox.selection_set(0)
-            self.on_assignment_selected(None)
+            first_item = self.tree.get_children()[0]
+            self.tree.selection_set(first_item)
 
-    def refresh_listbox(self):
-        self.listbox.delete(0, tk.END)
+    def refresh_table(self):
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+            
         for item in self.assignments:
-            self.listbox.insert(tk.END, f"{item['title']} ({item['duration_mins']} min)")
+            # Formatear los segundos reales guardados a MM:SS
+            actual_secs = item.get("actual_seconds", 0.0)
+            m = int(actual_secs // 60)
+            s = int(actual_secs % 60)
+            actual_str = f"{m:02d}:{s:02d}" if actual_secs > 0 else "--:--"
+            
+            self.tree.insert("", tk.END, values=(item['title'], f"{item['duration_mins']}m", actual_str))
+
+    def on_tree_press(self, event):
+        self._drag_item = self.tree.identify_row(event.y)
+
+    def on_tree_release(self, event):
+        if not hasattr(self, '_drag_item') or not self._drag_item:
+            return
+        target = self.tree.identify_row(event.y)
+        if target and target != self._drag_item:
+            children = list(self.tree.get_children())
+            from_idx = children.index(self._drag_item)
+            to_idx = children.index(target)
+            
+            # Reordenar en la lista interna de asignaciones
+            item_data = self.assignments.pop(from_idx)
+            self.assignments.insert(to_idx, item_data)
+            
+            self.refresh_table()
+            new_children = self.tree.get_children()
+            if to_idx < len(new_children):
+                self.tree.selection_set(new_children[to_idx])
+        self._drag_item = None
 
     def open_add_slot(self):
-        """ Abre una ventana para añadir asignaciones manuales """
         add_win = tk.Toplevel(self.root)
         add_win.title("Añadir Asignación")
         add_win.geometry("300x160")
-        add_win.grab_set() # Fuerza el foco a esta ventanita
+        add_win.grab_set() 
         
         ttk.Label(add_win, text="Título de la asignación:").pack(pady=(10, 2))
         title_var = tk.StringVar()
@@ -117,29 +184,85 @@ class StopwatchApp:
             if title and dur:
                 try:
                     dur_float = float(dur)
-                    self.assignments.append({"title": title, "duration_mins": dur_float})
-                    self.refresh_listbox()
-                    # Seleccionar la nueva añadida por defecto
-                    self.listbox.selection_clear(0, tk.END)
-                    self.listbox.selection_set(tk.END)
-                    self.on_assignment_selected(None)
+                    self.assignments.append({"title": title, "duration_mins": dur_float, "actual_seconds": 0.0})
+                    self.refresh_table()
+                    last_item = self.tree.get_children()[-1]
+                    self.tree.selection_set(last_item)
                     add_win.destroy()
                 except ValueError:
-                    pass # Evita que explote si no ponen un número
+                    pass 
 
         ttk.Button(add_win, text="Guardar", command=save_slot).pack(pady=15)
 
+    def edit_slot(self):
+        selection = self.tree.selection()
+        if not selection:
+            return
+            
+        index = self.tree.index(selection[0])
+        selected_task = self.assignments[index]
+
+        edit_win = tk.Toplevel(self.root)
+        edit_win.title("Editar Asignación")
+        edit_win.geometry("300x160")
+        edit_win.grab_set() 
+        
+        ttk.Label(edit_win, text="Título de la asignación:").pack(pady=(10, 2))
+        title_var = tk.StringVar(value=selected_task['title'])
+        ttk.Entry(edit_win, textvariable=title_var).pack(fill=tk.X, padx=20)
+        
+        ttk.Label(edit_win, text="Duración (minutos):").pack(pady=(10, 2))
+        duration_var = tk.StringVar(value=str(selected_task['duration_mins']))
+        ttk.Entry(edit_win, textvariable=duration_var).pack(fill=tk.X, padx=20)
+        
+        def save_edit():
+            title = title_var.get().strip()
+            dur = duration_var.get().strip()
+            if title and dur:
+                try:
+                    dur_float = float(dur)
+                    self.assignments[index]['title'] = title
+                    self.assignments[index]['duration_mins'] = dur_float
+                    self.refresh_table()
+                    self.tree.selection_set(self.tree.get_children()[index])
+                    self.on_assignment_selected(None)
+                    edit_win.destroy()
+                except ValueError:
+                    pass 
+
+        ttk.Button(edit_win, text="Actualizar", command=save_edit).pack(pady=15)
+
     def delete_slot(self):
-        """ Elimina la asignación seleccionada """
-        selection = self.listbox.curselection()
+        selection = self.tree.selection()
         if selection:
-            index = selection[0]
+            index = self.tree.index(selection[0])
             del self.assignments[index]
-            self.refresh_listbox()
+            self.refresh_table()
             self.reset_timer_state()
 
+    def move_up(self):
+        selection = self.tree.selection()
+        if not selection:
+            return
+        index = self.tree.index(selection[0])
+        if index > 0:
+            self.assignments[index], self.assignments[index - 1] = self.assignments[index - 1], self.assignments[index]
+            self.refresh_table()
+            new_children = self.tree.get_children()
+            self.tree.selection_set(new_children[index - 1])
+
+    def move_down(self):
+        selection = self.tree.selection()
+        if not selection:
+            return
+        index = self.tree.index(selection[0])
+        if index < len(self.assignments) - 1:
+            self.assignments[index], self.assignments[index + 1] = self.assignments[index + 1], self.assignments[index]
+            self.refresh_table()
+            new_children = self.tree.get_children()
+            self.tree.selection_set(new_children[index + 1])
+
     def open_settings(self):
-        """ Abre configuración de pantallas y reloj. """
         settings_win = tk.Toplevel(self.root)
         settings_win.title("Ajustes de Configuración")
         settings_win.geometry("350x280")
@@ -148,12 +271,10 @@ class StopwatchApp:
         frame = ttk.Frame(settings_win, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
         
-        # Option 1: Timer Mode
         ttk.Label(frame, text="Modo del Cronómetro:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
         ttk.Radiobutton(frame, text="Cuenta Regresiva (A cero)", variable=self.timer_mode, value="Regresiva", command=self.reset_timer_state).pack(anchor=tk.W, padx=10)
         ttk.Radiobutton(frame, text="Cuenta Progresiva (Hacia arriba)", variable=self.timer_mode, value="Progresiva", command=self.reset_timer_state).pack(anchor=tk.W, padx=10, pady=(0, 15))
         
-        # --- DYNAMIC HARDWARE MONITOR DETECTION ---
         screen_options = []
         try:
             from screeninfo import get_monitors
@@ -174,18 +295,23 @@ class StopwatchApp:
         ttk.Button(frame, text="Guardar y Cerrar", command=settings_win.destroy).pack(anchor=tk.E)
 
     def on_assignment_selected(self, event):
-        try:
-            index = self.listbox.curselection()[0]
+        selection = self.tree.selection()
+        if selection:
+            index = self.tree.index(selection[0])
             selected_task = self.assignments[index]
             self.is_running = False
-            
             self.total_duration = float(selected_task['duration_mins'] * 60)
             self.reset_timer_state()
-        except IndexError:
-            pass
 
     def reset_timer_state(self):
         self.is_running = False
+        selection = self.tree.selection()
+        if selection:
+            index = self.tree.index(selection[0])
+            self.assignments[index]['actual_seconds'] = 0.0
+            self.refresh_table()
+            self.tree.selection_set(self.tree.get_children()[index])
+
         if self.timer_mode.get() == "Regresiva":
             self.time_left = self.total_duration
         else:
@@ -223,15 +349,39 @@ class StopwatchApp:
         
         self.display_window.focus_set()
         
+        # Contenedor central para el reloj y el mensaje flotante debajo
+        display_container = tk.Frame(self.display_window, bg="black")
+        display_container.pack(expand=True)
+        
         self.display_label = tk.Label(
-            self.display_window, 
+            display_container, 
             text="00:00.00", 
-            font=("Arial", 120, "bold"), 
+            font=("Arial", 110, "bold"), 
             fg="white", 
             bg="black"
         )
-        self.display_label.pack(expand=True)
+        self.display_label.pack()
+        
+        self.display_msg_label = tk.Label(
+            display_container,
+            text="",
+            font=("Arial", 36, "bold"),
+            fg="yellow",
+            bg="black"
+        )
+        self.display_msg_label.pack(pady=(20, 0))
+
         self.update_interfaces()
+
+    def send_floating_message(self):
+        msg = self.msg_entry.get()
+        if self.display_msg_label and self.display_window and tk.Toplevel.winfo_exists(self.display_window):
+            self.display_msg_label.config(text=msg)
+
+    def clear_floating_message(self):
+        self.msg_entry.delete(0, tk.END)
+        if self.display_msg_label and self.display_window and tk.Toplevel.winfo_exists(self.display_window):
+            self.display_msg_label.config(text="")
 
     def toggle(self):
         if self.is_running:
@@ -247,18 +397,30 @@ class StopwatchApp:
             elapsed = current_time - self.last_update_time
             self.last_update_time = current_time
             
-            # NOTA: Ya no detenemos el reloj artificialmente en total_duration ni en 0
-            # para permitir que cambie de color y cuente los minutos extra.
             if self.timer_mode.get() == "Regresiva":
                 self.time_left -= elapsed
             else:
                 self.time_elapsed += elapsed
             
+            # Guardar tiempo actual en la asignación seleccionada
+            selection = self.tree.selection()
+            if selection:
+                index = self.tree.index(selection[0])
+                active_seconds = self.time_left if self.timer_mode.get() == "Regresiva" else self.time_elapsed
+                # Si es regresiva, el real transcurrido se calcula restando el tiempo restante al total
+                if self.timer_mode.get() == "Regresiva":
+                    real_dur = max(0.0, self.total_duration - self.time_left)
+                else:
+                    real_dur = self.time_elapsed
+                
+                self.assignments[index]['actual_seconds'] = real_dur
+                self.refresh_table()
+                self.tree.selection_set(self.tree.get_children()[index])
+
             self.update_interfaces()
             self.root.after(10, self.run_clock_engine)
 
     def update_interfaces(self):
-        # 3. Lógica para detectar si faltan menos de 60 segundos, o si se ha pasado de tiempo
         if self.timer_mode.get() == "Regresiva":
             active_seconds = self.time_left
             remaining_time = self.time_left
@@ -266,37 +428,27 @@ class StopwatchApp:
             active_seconds = self.time_elapsed
             remaining_time = self.total_duration - self.time_elapsed
 
-        # Formateo absoluto para que no rompa las matemáticas si los segundos bajan de 0
         display_seconds = abs(active_seconds)
         
         minutes = int(display_seconds // 60)
         seconds = int(display_seconds % 60)
         hundredths = int((display_seconds % 1) * 100)
         
-        # Si está en modo regresivo y se pasa de tiempo, añadir un signo negativo visual
         sign = "-" if active_seconds < 0 and self.timer_mode.get() == "Regresiva" else ""
         time_string = f"{sign}{minutes:02d}:{seconds:02d}.{hundredths:02d}"
         
         # --- Lógica de Colores ---
         if remaining_time <= 0: 
-            # Tiempo terminado o excedido -> ROJO
             local_color = "red"
             display_color = "red"
         elif remaining_time <= 60 and self.total_duration > 0:
-            # Falta 1 minuto o menos -> AMARILLO (naranja en local para mejor contraste)
             local_color = "orange"
             display_color = "yellow"
         else:
-            # Tiempo normal -> NEGRO/BLANCO
             local_color = "black"
             display_color = "white"
 
-        # Aplicamos el texto y los colores a la pantalla de control principal
         self.local_clock_label.config(text=time_string, foreground=local_color)
         
-        # Aplicamos el texto y los colores a la pantalla del proyector (si está abierta)
         if self.display_label and tk.Toplevel.winfo_exists(self.display_window):
             self.display_label.config(text=time_string, fg=display_color)
-
-
-```
