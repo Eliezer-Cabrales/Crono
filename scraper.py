@@ -55,7 +55,7 @@ def get_meeting_data():
 
         # 4. Extract assignments by looking for the preceding h3
         assignments = []
-        time_pattern = re.compile(r'\((\d+)\s*mins?\.?\)')
+        time_pattern = re.compile(r'\((\d+)\s*mins\.\)')
 
         all_paragraphs = week_soup.find_all('p')
         
