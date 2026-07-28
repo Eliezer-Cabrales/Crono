@@ -9,11 +9,11 @@ class StopwatchApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Rahab - Panel de Control")
-        self.root.geometry("750x580") # Un poco más de tamaño para la tabla y los mensajes
+        self.root.geometry("750x580") 
         
         # --- CONFIGURATION VARIABLES (Settings) ---
-        self.timer_mode = tk.StringVar(value="Progresiva") # Options: "Regresiva" or "Progresiva"
-        self.target_monitor = tk.StringVar(value="")      # Will hold dynamic screen settings string
+        self.timer_mode = tk.StringVar(value="Progresiva") 
+        self.target_monitor = tk.StringVar(value="")      
         
         # State management variables
         self.is_running = False
@@ -24,21 +24,36 @@ class StopwatchApp:
         self.display_label = None
         self.display_msg_label = None
         self.last_update_time = 0.0
-        self._drag_item = None # Para el drag and drop
+        self._drag_item = None
 
-        # Fetch data from the web scraper and format it
         raw_data = get_meeting_data() or []
         self.assignments = []
         for item in raw_data:
             self.assignments.append({
                 "title": item["title"],
                 "duration_mins": item["duration_mins"],
-                "actual_seconds": 0.0  # Nuevo campo para el tiempo real
+                "actual_seconds": 0.0  
             })
 
         # --- 1. TOP BAR CONTAINER ---
         top_bar = ttk.Frame(root, padding=(10, 5))
         top_bar.pack(side=tk.TOP, fill=tk.X)
+
+        # A) Icono de la ventana principal de Windows
+        try:
+            self.root.iconbitmap("rahab_icon.ico")
+        except Exception:
+            pass
+
+        # B) Icono visual al lado del texto "Rahab - Temporizador"
+        try:
+            self.rahab_logo = tk.PhotoImage(file="rahab_icon.png")
+            # Si el PNG es muy grande, puedes achicarlo descomentando y ajustando la siguiente línea:
+            # self.rahab_logo = self.rahab_logo.subsample(2, 2) 
+            logo_label = tk.Label(top_bar, image=self.rahab_logo)
+            logo_label.pack(side=tk.LEFT, padx=(0, 10))
+        except tk.TclError:
+            pass # Si no encuentra la imagen, simplemente no la pone
 
         ttk.Label(top_bar, text="Rahab - Temporizador", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
         
@@ -67,37 +82,32 @@ class StopwatchApp:
         
         ttk.Label(left_frame, text="Asignaciones de la Reunión:", font=("Arial", 11, "bold")).pack(anchor=tk.W, pady=5)
         
-        # --- NUEVA TABLA (Treeview) EN VEZ DE LISTBOX ---
+        # --- TABLA (Treeview) ---
         columns = ("title", "duration", "actual")
         self.tree = ttk.Treeview(left_frame, columns=columns, show="headings", selectmode="browse")
         
-        # Cabeceras
         self.tree.heading("title", text="Asignación")
         self.tree.heading("duration", text="Previsto")
         self.tree.heading("actual", text="Real")
         
-        # Columnas configuración
         self.tree.column("title", width=200, anchor="w")
         self.tree.column("duration", width=60, anchor="center")
         self.tree.column("actual", width=60, anchor="center")
         
         self.tree.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        # Bindings para Selección y Drag & Drop
         self.tree.bind("<<TreeviewSelect>>", self.on_assignment_selected)
         self.tree.bind("<ButtonPress-1>", self.on_tree_press)
         self.tree.bind("<ButtonRelease-1>", self.on_tree_release)
         
-        # --- PANEL DE BOTONES (Añadir, Editar, Eliminar, Subir, Bajar) ---
+        # --- PANEL DE BOTONES ---
         btn_frame = ttk.Frame(left_frame)
         btn_frame.pack(fill=tk.X, pady=5)
         
-        # Fila 1
         ttk.Button(btn_frame, text="+ Añadir", command=self.open_add_slot).grid(row=0, column=0, padx=2, pady=2, sticky="ew")
         ttk.Button(btn_frame, text="✏ Editar", command=self.edit_slot).grid(row=0, column=1, padx=2, pady=2, sticky="ew")
         ttk.Button(btn_frame, text="- Elim.", command=self.delete_slot).grid(row=0, column=2, padx=2, pady=2, sticky="ew")
         
-        # Fila 2
         ttk.Button(btn_frame, text="↑ Subir", command=self.move_up).grid(row=1, column=0, padx=2, pady=2, sticky="ew")
         ttk.Button(btn_frame, text="↓ Bajar", command=self.move_down).grid(row=1, column=1, columnspan=2, padx=2, pady=2, sticky="ew")
 
@@ -176,19 +186,15 @@ class StopwatchApp:
             self.tree.delete(row)
             
         for item in self.assignments:
-            # Formatear el tiempo real
             m = int(item["actual_seconds"] // 60)
             s = int(item["actual_seconds"] % 60)
             actual_str = f"{m:02d}:{s:02d}" if item["actual_seconds"] > 0 else "--:--"
-            
             self.tree.insert("", tk.END, values=(item['title'], f"{item['duration_mins']} min", actual_str))
 
     def on_tree_press(self, event):
-        """ Inicia el arrastre de una fila """
         self._drag_item = self.tree.identify_row(event.y)
 
     def on_tree_release(self, event):
-        """ Suelta la fila en su nueva posición """
         if not getattr(self, '_drag_item', None):
             return
         target = self.tree.identify_row(event.y)
@@ -198,7 +204,6 @@ class StopwatchApp:
                 from_idx = children.index(self._drag_item)
                 to_idx = children.index(target)
                 
-                # Intercambiar en la lista de datos
                 item = self.assignments.pop(from_idx)
                 self.assignments.insert(to_idx, item)
                 
@@ -358,7 +363,6 @@ class StopwatchApp:
             pass
 
     def hard_reset_timer(self):
-        """ Reinicia el reloj Y borra el tiempo real acumulado de la tarea seleccionada """
         selection = self.tree.selection()
         if selection:
             index = self.tree.index(selection[0])
@@ -367,7 +371,6 @@ class StopwatchApp:
         self.reset_timer_state()
 
     def reset_timer_state(self):
-        """ Solo devuelve el cronómetro a 0 sin borrar el histórico guardado """
         self.is_running = False
         if self.timer_mode.get() == "Regresiva":
             self.time_left = self.total_duration
@@ -406,7 +409,6 @@ class StopwatchApp:
         
         self.display_window.focus_set()
         
-        # CONTENEDOR PARA CENTRAR RELOJ Y MENSAJE
         container = tk.Frame(self.display_window, bg="black")
         container.pack(expand=True)
         
@@ -421,7 +423,7 @@ class StopwatchApp:
         
         self.display_msg_label = tk.Label(
             container,
-            text=self.msg_var.get(), # Carga el mensaje si ya había uno escrito
+            text=self.msg_var.get(),
             font=("Arial", 45, "bold"),
             fg="yellow",
             bg="black"
@@ -449,13 +451,11 @@ class StopwatchApp:
             else:
                 self.time_elapsed += elapsed
                 
-            # --- Actualizar tiempo real guardado ---
             selection = self.tree.selection()
             if selection:
                 index = self.tree.index(selection[0])
                 self.assignments[index]['actual_seconds'] += elapsed
                 
-                # Actualizar el texto en la tabla (solo esa celda, para que no parpadee)
                 secs = self.assignments[index]['actual_seconds']
                 m = int(secs // 60)
                 s = int(secs % 60)
@@ -481,7 +481,6 @@ class StopwatchApp:
         sign = "-" if active_seconds < 0 and self.timer_mode.get() == "Regresiva" else ""
         time_string = f"{sign}{minutes:02d}:{seconds:02d}.{hundredths:02d}"
         
-        # --- Lógica de Colores ---
         if remaining_time <= 0: 
             local_color = "red"
             display_color = "red"
