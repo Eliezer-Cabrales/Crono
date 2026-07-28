@@ -39,23 +39,13 @@ class StopwatchApp:
         top_bar = ttk.Frame(root, padding=(10, 5))
         top_bar.pack(side=tk.TOP, fill=tk.X)
 
-        # A) Icono de la ventana principal de Windows
+        # Icono de la ventana principal de Windows (Barra de título y barra de tareas)
         try:
             self.root.iconbitmap("rahab_icon.ico")
         except Exception:
             pass
 
-        # B) Icono visual al lado del texto "Rahab - Temporizador"
-        try:
-            self.rahab_logo = tk.PhotoImage(file="rahab_icon.png")
-            # Si el PNG es muy grande, puedes achicarlo descomentando y ajustando la siguiente línea:
-            # self.rahab_logo = self.rahab_logo.subsample(2, 2) 
-            logo_label = tk.Label(top_bar, image=self.rahab_logo)
-            logo_label.pack(side=tk.LEFT, padx=(0, 10))
-        except tk.TclError:
-            pass # Si no encuentra la imagen, simplemente no la pone
-
-        ttk.Label(top_bar, text="Rahab - Temporizador", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
+        ttk.Label(top_bar, text="Rahab", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
         
         # BOTÓN DE AYUDA GITHUB
         help_btn = ttk.Button(top_bar, text="ℹ Ayuda", command=self.open_help)
