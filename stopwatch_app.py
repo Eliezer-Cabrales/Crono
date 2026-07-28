@@ -124,7 +124,6 @@ class SettingsDialog(QDialog):
 class StopwatchApp(QWidget):
     def __init__(self):
         super().__init__()
-        # --- Cambios de título y de Icono ---
         self.setWindowTitle("Rahab")
         self.setWindowIcon(QIcon("rahab_icon.ico"))
         self.resize(750, 580)
@@ -161,8 +160,10 @@ class StopwatchApp(QWidget):
         if self.assignments:
             self.table.selectRow(0)
 
-        # Inicia la pantalla 2 al arrancar de forma segura (tras 500ms)
-        QTimer.singleShot(500, self.open_second_screen)
+        # --- COMPROBACIÓN DE PANTALLAS ---
+        # Solo abre la segunda pantalla de forma automática si hay más de 1 pantalla conectada
+        if len(QApplication.screens()) > 1:
+            QTimer.singleShot(500, self.open_second_screen)
 
     def load_config(self):
         if os.path.exists(self.config_file):
@@ -194,7 +195,6 @@ class StopwatchApp(QWidget):
         
         # --- BARRA SUPERIOR ---
         top_bar = QHBoxLayout()
-        # --- Cambio de texto en la app ---
         title = QLabel("<b>Rahab</b>")
         title.setStyleSheet("font-size: 16px;")
         
