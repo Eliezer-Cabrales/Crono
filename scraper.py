@@ -14,7 +14,6 @@ def get_meeting_data():
     }
 
     try:
-        # Calculate the Monday of the current week to use as a consistent reference
         now = datetime.now()
         monday = now - timedelta(days=now.weekday())
 
@@ -25,7 +24,7 @@ def get_meeting_data():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 2. Get the link for the current workbook using the monday date
+
         current_month_workbook = get_mwb_storage_name(monday)
         current_workbook_link = None
         for link in soup.find_all('a', href=True):
@@ -36,7 +35,6 @@ def get_meeting_data():
         if not current_workbook_link:
             current_workbook_link = base_url
 
-        # 3. Connect to the specific week
         workbook_response = requests.get(current_workbook_link, headers=headers)
         workbook_soup = BeautifulSoup(workbook_response.text, 'html.parser')
 
@@ -53,9 +51,8 @@ def get_meeting_data():
         week_workbook_response = requests.get(week_link, headers=headers)
         week_soup = BeautifulSoup(week_workbook_response.text, 'html.parser')
 
-        # 4. Extract assignments by looking for the preceding h3
         assignments = []
-        time_pattern = re.compile(r'\((\d+)\s*mins\.\)')
+        time_pattern = re.compile(r'\((\d+)\s*min[s]?\.?\)')
 
         all_paragraphs = week_soup.find_all('p')
         
@@ -92,7 +89,7 @@ def get_mwb_storage_name(reference_date):
     month = reference_date.month
     year = reference_date.year
     
-    # Logic: Odd months (1, 3...) are start of workbook, even months (2, 4...) are end.
+  
     if month % 2 != 0:
         first_month = months_es[month]
         second_month = months_es[month + 1] if month < 12 else months_es[1]

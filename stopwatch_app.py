@@ -3,24 +3,31 @@ import time
 import os
 import json
 import webbrowser
+from datetime import datetime
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QGroupBox, QLineEdit, QDialog, 
                              QRadioButton, QComboBox, QMessageBox, QAbstractItemView,
                              QApplication)
-
 from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
 from scraper import get_meeting_data
 
-
 class ScraperThread(QThread):
-    data_fetched = pyqtSignal(list)
+    data_fetched = pyqtSignal(list, bool)
 
     def run(self):
-        data = get_meeting_data()
-        self.data_fetched.emit(data or [])
-
+        today = datetime.now().weekday()
+        
+        if today in (5, 6):
+            data = [
+                {"title": "Discurso Público", "duration_mins": 30},
+                {"title": "Estudio de la Atalaya", "duration_mins": 60}
+            ]
+            self.data_fetched.emit(data, True)
+        else:
+            data = get_meeting_data()
+            self.data_fetched.emit(data or [], False)
 
 class DisplayWindow(QWidget):
     def __init__(self):
@@ -125,7 +132,6 @@ class SettingsDialog(QDialog):
         self.target_idx = self.combo.currentIndex()
         self.accept()
 
-
 class StopwatchApp(QWidget):
     def __init__(self):
         super().__init__()
@@ -154,7 +160,6 @@ class StopwatchApp(QWidget):
         self.init_ui()
         self.refresh_table()
 
-        
         self.scraper_thread = ScraperThread()
         self.scraper_thread.data_fetched.connect(self.on_data_fetched)
         self.scraper_thread.start()
@@ -162,14 +167,17 @@ class StopwatchApp(QWidget):
         if len(QApplication.screens()) > 1:
             QTimer.singleShot(500, self.open_second_screen)
 
-  
-    def on_data_fetched(self, raw_data):
-        if not raw_data:
-            raw_data = [
-                {"title": "Tesoros de la Biblia", "duration_mins": 10},
-                {"title": "Perlas escondidas", "duration_mins": 10},
-                {"title": "Lectura de la Biblia", "duration_mins": 4}
-            ]
+    def on_data_fetched(self, raw_data, is_weekend):
+        if not is_weekend:
+            if not raw_data:
+                raw_data = [
+                    {"title": "Tesoros de la Biblia", "duration_mins": 10},
+                    {"title": "Perlas escondidas", "duration_mins": 10},
+                    {"title": "Lectura de la Biblia", "duration_mins": 4}
+                ]
+            
+            raw_data.insert(0, {"title": "Palabras de introducción", "duration_mins": 1})
+            raw_data.append({"title": "Palabras de conclusión", "duration_mins": 3})
 
         for item in raw_data:
             self.assignments.append({
@@ -181,7 +189,6 @@ class StopwatchApp(QWidget):
         self.refresh_table()
         if self.assignments:
             self.table.selectRow(0)
-
 
     def closeEvent(self, event):
         if self.display_window and self.display_window.isVisible():
@@ -216,7 +223,6 @@ class StopwatchApp(QWidget):
     def init_ui(self):
         main_layout = QVBoxLayout()
         
-       
         top_bar = QHBoxLayout()
         title = QLabel("<b>Rahab</b>")
         title.setStyleSheet("font-size: 16px;")
@@ -235,7 +241,6 @@ class StopwatchApp(QWidget):
         
         content_layout = QHBoxLayout()
         
-       
         left_panel = QVBoxLayout()
         left_panel.addWidget(QLabel("<b>Asignaciones de la Reunión:</b>"))
         
@@ -270,7 +275,6 @@ class StopwatchApp(QWidget):
         
         content_layout.addLayout(left_panel, stretch=6)
         
-        # --- PANEL DERECHO (Controles) ---
         right_panel = QVBoxLayout()
         right_panel.addWidget(QLabel("<b>Tiempo:</b>"))
         
@@ -318,7 +322,6 @@ class StopwatchApp(QWidget):
         content_layout.addLayout(right_panel, stretch=4)
         main_layout.addLayout(content_layout)
         self.setLayout(main_layout)
-
 
     def refresh_table(self):
         self.table.blockSignals(True)
@@ -394,7 +397,6 @@ class StopwatchApp(QWidget):
             self.refresh_table()
             self.table.selectRow(row+1)
 
-
     def show_message(self):
         if self.display_window and self.display_window.isVisible():
             self.display_window.msg_label.setText(self.msg_input.text().strip())
@@ -438,7 +440,6 @@ class StopwatchApp(QWidget):
         
         self.update_interfaces()
 
-   
     def hard_reset_timer(self):
         row = self.table.currentRow()
         if row >= 0:
@@ -460,7 +461,6 @@ class StopwatchApp(QWidget):
             self.is_running = False
             self.timer.stop()
             
-           
             row = self.table.currentRow()
             if row >= 0 and row < self.table.rowCount() - 1:
                 self.table.selectRow(row + 1)
@@ -512,7 +512,6 @@ class StopwatchApp(QWidget):
         sign = "-" if active_seconds < 0 and self.timer_mode == "Regresiva" else ""
         time_string = f"{sign}{minutes:02d}:{seconds:02d}.{hundredths:02d}"
         
-   
         if remaining_time <= 0: 
             local_color = "red"
             display_color = "red"
