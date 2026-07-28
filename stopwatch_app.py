@@ -3,7 +3,19 @@ from tkinter import ttk
 import time
 import re
 import webbrowser
+import os
+import json
+import ctypes
 from scraper import get_meeting_data
+
+# ==============================================================================
+# SOLUCIÓN DE MULTIPANTALLA PARA WINDOWS 11 (DPI Awareness)
+# Esto evita que el escalado (125%, 150%) rompa las posiciones de las pantallas
+# ==============================================================================
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2) # 2 = Per-monitor DPI aware
+except Exception:
+    pass
 
 class StopwatchApp:
     def __init__(self, root):
@@ -11,11 +23,13 @@ class StopwatchApp:
         self.root.title("Rahab - Panel de Control")
         self.root.geometry("750x580") 
         
-        # --- CONFIGURATION VARIABLES (Settings) ---
+        # --- ARCHIVO DE CONFIGURACIÓN ---
+        self.config_file = "rahab_config.json"
+        
+        # --- VARIABLES DE ESTADO ---
         self.timer_mode = tk.StringVar(value="Progresiva") 
         self.target_monitor = tk.StringVar(value="")      
         
-        # State management variables
         self.is_running = False
         self.time_elapsed = 0.0       
         self.time_left = 0.0          
@@ -26,6 +40,31 @@ class StopwatchApp:
         self.last_update_time = 0.0
         self._drag_item = None
 
+        # 1. Obtener los monitores físicos reales conectados AHORA
+        current_screens = self.get_current_screens()
+
+        # 2. Cargar configuración guardada (Si existe)
+        saved_monitor = ""
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, "r") as f:
+                    data = json.load(f)
+                    if "timer_mode" in data:
+                        self.timer_mode.set(data["timer_mode"])
+                    if "target_monitor" in data:
+                        saved_monitor = data["target_monitor"]
+            except Exception:
+                pass
+
+        # 3. Decidir en qué pantalla abrir
+        # Si la pantalla guardada está conectada, úsala. 
+        # Si no, usa la ÚLTIMA pantalla conectada (la más a la derecha) por defecto.
+        if saved_monitor in current_screens:
+            self.target_monitor.set(saved_monitor)
+        else:
+            self.target_monitor.set(current_screens[-1] if current_screens else "")
+
+        # --- CARGAR ASIGNACIONES ---
         raw_data = get_meeting_data() or []
         self.assignments = []
         for item in raw_data:
@@ -39,7 +78,7 @@ class StopwatchApp:
         top_bar = ttk.Frame(root, padding=(10, 5))
         top_bar.pack(side=tk.TOP, fill=tk.X)
 
-        # Icono de la ventana principal de Windows (Barra de título y barra de tareas)
+        # Icono de la ventana principal
         try:
             self.root.iconbitmap("rahab_icon.ico")
         except Exception:
@@ -141,6 +180,74 @@ class StopwatchApp:
             first_item = self.tree.get_children()[0]
             self.tree.selection_set(first_item)
             self.on_assignment_selected(None)
+
+        # ==========================================================
+        # AUTO-INICIAR LA PANTALLA SECUNDARIA TRAS 500ms
+        # ==========================================================
+        self.root.after(500, self.open_second_screen)
+
+    # ================== MÉTODOS DE CONFIGURACIÓN Y MONITORES ==================
+
+    def get_current_screens(self):
+        """ Detecta las pantallas físicas conectadas y las ordena lógicamente """
+        screen_options = []
+        try:
+            from screeninfo import get_monitors
+            monitors = get_monitors()
+            # Ordenamos por posición 'x' para que la "última pantalla" sea la más a la derecha
+            monitors.sort(key=lambda m: m.x)
+            for i, m in enumerate(monitors):
+                role = " (Principal)" if m.is_primary else ""
+                screen_options.append(f"Pantalla {i + 1} ({m.width}x{m.height}+{m.x}+{m.y}){role}")
+        except Exception:
+            screen_options = ["Pantalla 1 (Principal)", "Pantalla 2 (Secundaria)"]
+        return screen_options
+
+    def save_config(self):
+        """ Guarda la pantalla elegida y el modo en un archivo invisible """
+        data = {
+            "timer_mode": self.timer_mode.get(),
+            "target_monitor": self.target_monitor.get()
+        }
+        try:
+            with open(self.config_file, "w") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
+    def open_settings(self):
+        settings_win = tk.Toplevel(self.root)
+        settings_win.title("Ajustes de Configuración")
+        settings_win.geometry("380x280")
+        settings_win.grab_set()
+        
+        frame = ttk.Frame(settings_win, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text="Modo del Cronómetro:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+        ttk.Radiobutton(frame, text="Cuenta Regresiva (A cero)", variable=self.timer_mode, value="Regresiva", command=self.reset_timer_state).pack(anchor=tk.W, padx=10)
+        ttk.Radiobutton(frame, text="Cuenta Progresiva (Hacia arriba)", variable=self.timer_mode, value="Progresiva", command=self.reset_timer_state).pack(anchor=tk.W, padx=10, pady=(0, 15))
+        
+        current_screens = self.get_current_screens()
+
+        ttk.Label(frame, text="Pantalla de Proyección por Defecto:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+        
+        if self.target_monitor.get() not in current_screens and current_screens:
+            self.target_monitor.set(current_screens[-1]) # Default a la última si hay fallo
+
+        monitor_combo = ttk.Combobox(frame, textvariable=self.target_monitor, values=current_screens, state="readonly")
+        monitor_combo.pack(fill=tk.X, padx=10, pady=(0, 20))
+        
+        def save_and_close():
+            self.save_config() # Guarda en el .json
+            settings_win.destroy()
+            
+            # Si cambiamos la pantalla en vivo, destruir y reabrir el proyector en la nueva ubicación
+            if self.display_window and tk.Toplevel.winfo_exists(self.display_window):
+                self.display_window.destroy()
+            self.open_second_screen()
+
+        ttk.Button(frame, text="Guardar y Cerrar", command=save_and_close).pack(anchor=tk.E)
 
     # ================== MÉTODOS DE VENTANAS Y AYUDA ==================
 
@@ -305,39 +412,7 @@ class StopwatchApp:
             self.tree.selection_set(new_children[index + 1])
             self.on_assignment_selected(None)
 
-    # ================== CONFIGURACIONES Y MOTOR ==================
-
-    def open_settings(self):
-        settings_win = tk.Toplevel(self.root)
-        settings_win.title("Ajustes de Configuración")
-        settings_win.geometry("350x280")
-        settings_win.grab_set()
-        
-        frame = ttk.Frame(settings_win, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-        
-        ttk.Label(frame, text="Modo del Cronómetro:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
-        ttk.Radiobutton(frame, text="Cuenta Regresiva (A cero)", variable=self.timer_mode, value="Regresiva", command=self.reset_timer_state).pack(anchor=tk.W, padx=10)
-        ttk.Radiobutton(frame, text="Cuenta Progresiva (Hacia arriba)", variable=self.timer_mode, value="Progresiva", command=self.reset_timer_state).pack(anchor=tk.W, padx=10, pady=(0, 15))
-        
-        screen_options = []
-        try:
-            from screeninfo import get_monitors
-            for i, m in enumerate(get_monitors()):
-                role = " (Principal)" if m.is_primary else ""
-                screen_options.append(f"Pantalla {i + 1} ({m.width}x{m.height}+{m.x}+{m.y}){role}")
-        except Exception:
-            screen_options = ["Pantalla 1 (Principal)", "Pantalla 2 (Secundaria)"]
-
-        ttk.Label(frame, text="Pantalla de Proyección por Defecto:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
-        
-        if self.target_monitor.get() not in screen_options and screen_options:
-            self.target_monitor.set(screen_options[0])
-
-        monitor_combo = ttk.Combobox(frame, textvariable=self.target_monitor, values=screen_options, state="readonly")
-        monitor_combo.pack(fill=tk.X, padx=10, pady=(0, 20))
-        
-        ttk.Button(frame, text="Guardar y Cerrar", command=settings_win.destroy).pack(anchor=tk.E)
+    # ================== CONTROL DEL MOTOR ==================
 
     def on_assignment_selected(self, event):
         try:
@@ -383,12 +458,16 @@ class StopwatchApp:
         
         if match and "+" in match.group(1):
             geometry_info = match.group(1)
-            geo_match = re.search(r'(\d+)x(\d+)([+-]\d+[+-]\d+)', geometry_info)
+            # Extraemos limpiamente anchura, altura y coordenadas X, Y
+            geo_match = re.search(r'(\d+)x(\d+)([+-]\d+)([+-]\d+)', geometry_info)
             if geo_match:
                 width = geo_match.group(1)
                 height = geo_match.group(2)
-                offset_coords = geo_match.group(3)
-                self.display_window.geometry(f"{width}x{height}{offset_coords}")
+                x = geo_match.group(3)
+                y = geo_match.group(4)
+                
+                # Le decimos explícitamente a la ventana que salte a las coordenadas de esa pantalla
+                self.display_window.geometry(f"{width}x{height}{x}{y}")
                 self.display_window.attributes("-fullscreen", True)
         else:
             if "Pantalla 2" in selected_string:
