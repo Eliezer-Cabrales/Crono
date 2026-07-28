@@ -8,12 +8,9 @@ import json
 import ctypes
 from scraper import get_meeting_data
 
-# ==============================================================================
-# SOLUCIÓN DE MULTIPANTALLA PARA WINDOWS 11 (DPI Awareness)
-# Esto evita que el escalado (125%, 150%) rompa las posiciones de las pantallas
-# ==============================================================================
+# Solución DPI para Windows 11
 try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2) # 2 = Per-monitor DPI aware
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
     pass
 
@@ -23,10 +20,8 @@ class StopwatchApp:
         self.root.title("Rahab - Panel de Control")
         self.root.geometry("750x580") 
         
-        # --- ARCHIVO DE CONFIGURACIÓN ---
         self.config_file = "rahab_config.json"
         
-        # --- VARIABLES DE ESTADO ---
         self.timer_mode = tk.StringVar(value="Progresiva") 
         self.target_monitor = tk.StringVar(value="")      
         
@@ -40,10 +35,8 @@ class StopwatchApp:
         self.last_update_time = 0.0
         self._drag_item = None
 
-        # 1. Obtener los monitores físicos reales conectados AHORA
         current_screens = self.get_current_screens()
 
-        # 2. Cargar configuración guardada (Si existe)
         saved_monitor = ""
         if os.path.exists(self.config_file):
             try:
@@ -56,15 +49,11 @@ class StopwatchApp:
             except Exception:
                 pass
 
-        # 3. Decidir en qué pantalla abrir
-        # Si la pantalla guardada está conectada, úsala. 
-        # Si no, usa la ÚLTIMA pantalla conectada (la más a la derecha) por defecto.
         if saved_monitor in current_screens:
             self.target_monitor.set(saved_monitor)
         else:
             self.target_monitor.set(current_screens[-1] if current_screens else "")
 
-        # --- CARGAR ASIGNACIONES ---
         raw_data = get_meeting_data() or []
         self.assignments = []
         for item in raw_data:
@@ -78,7 +67,6 @@ class StopwatchApp:
         top_bar = ttk.Frame(root, padding=(10, 5))
         top_bar.pack(side=tk.TOP, fill=tk.X)
 
-        # Icono de la ventana principal
         try:
             self.root.iconbitmap("rahab_icon.ico")
         except Exception:
@@ -86,7 +74,6 @@ class StopwatchApp:
 
         ttk.Label(top_bar, text="Rahab", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
         
-        # BOTÓN DE AYUDA GITHUB
         help_btn = ttk.Button(top_bar, text="ℹ Ayuda", command=self.open_help)
         help_btn.pack(side=tk.LEFT, padx=15)
 
@@ -105,13 +92,11 @@ class StopwatchApp:
         main_container = ttk.Frame(root)
         main_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        # Left Panel: Assignment Table
         left_frame = ttk.Frame(main_container, padding=10)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         ttk.Label(left_frame, text="Asignaciones de la Reunión:", font=("Arial", 11, "bold")).pack(anchor=tk.W, pady=5)
         
-        # --- TABLA (Treeview) ---
         columns = ("title", "duration", "actual")
         self.tree = ttk.Treeview(left_frame, columns=columns, show="headings", selectmode="browse")
         
@@ -129,7 +114,6 @@ class StopwatchApp:
         self.tree.bind("<ButtonPress-1>", self.on_tree_press)
         self.tree.bind("<ButtonRelease-1>", self.on_tree_release)
         
-        # --- PANEL DE BOTONES ---
         btn_frame = ttk.Frame(left_frame)
         btn_frame.pack(fill=tk.X, pady=5)
         
@@ -146,7 +130,6 @@ class StopwatchApp:
 
         self.refresh_table()
 
-        # Right Panel: Timer, Buttons and Messages
         right_frame = ttk.Frame(main_container, padding=10)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
@@ -163,7 +146,6 @@ class StopwatchApp:
         
         ttk.Button(right_frame, text="Abrir Segunda Pantalla", command=self.open_second_screen).pack(pady=15, fill=tk.X)
 
-        # --- SECCIÓN MENSAJES BREVES ---
         msg_frame = ttk.LabelFrame(right_frame, text="Mensaje en Proyector", padding=5)
         msg_frame.pack(fill=tk.X, pady=10)
         
@@ -181,30 +163,22 @@ class StopwatchApp:
             self.tree.selection_set(first_item)
             self.on_assignment_selected(None)
 
-        # ==========================================================
-        # AUTO-INICIAR LA PANTALLA SECUNDARIA TRAS 500ms
-        # ==========================================================
         self.root.after(500, self.open_second_screen)
 
-    # ================== MÉTODOS DE CONFIGURACIÓN Y MONITORES ==================
-
     def get_current_screens(self):
-        """ Detecta las pantallas físicas conectadas y las ordena lógicamente """
         screen_options = []
         try:
             from screeninfo import get_monitors
             monitors = get_monitors()
-            # Ordenamos por posición 'x' para que la "última pantalla" sea la más a la derecha
             monitors.sort(key=lambda m: m.x)
             for i, m in enumerate(monitors):
                 role = " (Principal)" if m.is_primary else ""
-                screen_options.append(f"Pantalla {i + 1} ({m.width}x{m.height}+{m.x}+{m.y}){role}")
+                screen_options.append(f"Pantalla {i + 1} ({m.width}x{m.height}{m.x:+d}{m.y:+d}){role}")
         except Exception:
             screen_options = ["Pantalla 1 (Principal)", "Pantalla 2 (Secundaria)"]
         return screen_options
 
     def save_config(self):
-        """ Guarda la pantalla elegida y el modo en un archivo invisible """
         data = {
             "timer_mode": self.timer_mode.get(),
             "target_monitor": self.target_monitor.get()
@@ -230,26 +204,23 @@ class StopwatchApp:
         
         current_screens = self.get_current_screens()
 
-        ttk.Label(frame, text="Pantalla de Proyección por Defecto:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+        ttk.Label(frame, text="Escritorio / Pantalla de Proyección:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
         
         if self.target_monitor.get() not in current_screens and current_screens:
-            self.target_monitor.set(current_screens[-1]) # Default a la última si hay fallo
+            self.target_monitor.set(current_screens[-1])
 
         monitor_combo = ttk.Combobox(frame, textvariable=self.target_monitor, values=current_screens, state="readonly")
         monitor_combo.pack(fill=tk.X, padx=10, pady=(0, 20))
         
         def save_and_close():
-            self.save_config() # Guarda en el .json
+            self.save_config()
             settings_win.destroy()
             
-            # Si cambiamos la pantalla en vivo, destruir y reabrir el proyector en la nueva ubicación
             if self.display_window and tk.Toplevel.winfo_exists(self.display_window):
                 self.display_window.destroy()
             self.open_second_screen()
 
         ttk.Button(frame, text="Guardar y Cerrar", command=save_and_close).pack(anchor=tk.E)
-
-    # ================== MÉTODOS DE VENTANAS Y AYUDA ==================
 
     def open_help(self):
         help_win = tk.Toplevel(self.root)
@@ -275,8 +246,6 @@ class StopwatchApp:
         self.msg_var.set("")
         if self.display_window and tk.Toplevel.winfo_exists(self.display_window):
             self.display_msg_label.config(text="")
-
-    # ================== MÉTODOS DE LA TABLA ==================
 
     def refresh_table(self):
         for row in self.tree.get_children():
@@ -412,8 +381,6 @@ class StopwatchApp:
             self.tree.selection_set(new_children[index + 1])
             self.on_assignment_selected(None)
 
-    # ================== CONTROL DEL MOTOR ==================
-
     def on_assignment_selected(self, event):
         try:
             selection = self.tree.selection()
@@ -454,27 +421,22 @@ class StopwatchApp:
         self.display_window.bind("<Escape>", lambda e: self.display_window.destroy())
         
         selected_string = self.target_monitor.get()
-        match = re.search(r'\(([^)]+)\)', selected_string)
         
-        if match and "+" in match.group(1):
-            geometry_info = match.group(1)
-            # Extraemos limpiamente anchura, altura y coordenadas X, Y
-            geo_match = re.search(r'(\d+)x(\d+)([+-]\d+)([+-]\d+)', geometry_info)
-            if geo_match:
-                width = geo_match.group(1)
-                height = geo_match.group(2)
-                x = geo_match.group(3)
-                y = geo_match.group(4)
-                
-                # Le decimos explícitamente a la ventana que salte a las coordenadas de esa pantalla
-                self.display_window.geometry(f"{width}x{height}{x}{y}")
-                self.display_window.attributes("-fullscreen", True)
+        # Extracción mejorada de coordenadas absolutas de pantalla virtual extendida
+        match = re.search(r'\(\d+x\d+([+-]\d+)([+-]\d+)\)', selected_string)
+        
+        if match:
+            x_coord = match.group(1)
+            y_coord = match.group(2)
+            
+            # Forzamos la geometría inicial sobre el escritorio virtual exacto y luego expandimos
+            self.display_window.geometry(f"800x600{x_coord}{y_coord}")
+            self.display_window.update_idletasks()
+            self.display_window.attributes("-fullscreen", True)
         else:
-            if "Pantalla 2" in selected_string:
-                self.display_window.geometry("1920x1080")
-                self.display_window.attributes("-fullscreen", True)
-            else:
-                self.display_window.geometry("600x400")
+            # Fallback por defecto si hubiera algún problema de lectura
+            self.display_window.geometry("800x600+0+0")
+            self.display_window.attributes("-fullscreen", True)
         
         self.display_window.focus_set()
         
