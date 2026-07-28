@@ -6,13 +6,22 @@ import webbrowser
 import os
 import json
 import ctypes
+import platform
 from scraper import get_meeting_data
 
-# Solución DPI para Windows 11 (Evita que el zoom del 125% o 150% mueva la pantalla)
-try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)
-except Exception:
-    pass
+# ==============================================================================
+# GESTIÓN NATIVA DE ESCALADO DE WINDOWS (DPI)
+# ==============================================================================
+if platform.system() == "Windows":
+    try:
+        # Intenta usar la API de Windows 8.1 / 10 / 11
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            # Fallback para versiones anteriores de Windows
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 
 class StopwatchApp:
     def __init__(self, root):
@@ -35,10 +44,10 @@ class StopwatchApp:
         self.last_update_time = 0.0
         self._drag_item = None
 
-        # Detectar las pantallas físicas conectadas en este momento
+        # 1. Detectar pantallas reales al arrancar
         current_screens = self.get_current_screens()
 
-        # Cargar configuración si existe
+        # 2. Cargar configuración si existe
         saved_monitor = ""
         if os.path.exists(self.config_file):
             try:
@@ -51,7 +60,7 @@ class StopwatchApp:
             except Exception:
                 pass
 
-        # Decidir en qué pantalla abrir por defecto (la guardada o la última conectada)
+        # 3. Asignar pantalla por defecto
         if saved_monitor in current_screens:
             self.target_monitor.set(saved_monitor)
         else:
@@ -166,17 +175,21 @@ class StopwatchApp:
             self.tree.selection_set(first_item)
             self.on_assignment_selected(None)
 
-        # Auto-Inicia la segunda pantalla en el monitor seleccionado
+        # Auto-Inicia la segunda pantalla
         self.root.after(500, self.open_second_screen)
+
+    # ================== MÉTODOS DE CONFIGURACIÓN ==================
 
     def get_current_screens(self):
         screen_options = []
         try:
             from screeninfo import get_monitors
             monitors = get_monitors()
+            # Ordenamos las pantallas lógicamente de izquierda a derecha usando su coordenada X
             monitors.sort(key=lambda m: m.x)
             for i, m in enumerate(monitors):
                 role = " (Principal)" if m.is_primary else ""
+                # Formato exacto: "Pantalla 1 (1920x1080+0+0) (Principal)"
                 screen_options.append(f"Pantalla {i + 1} ({m.width}x{m.height}{m.x:+d}{m.y:+d}){role}")
         except Exception:
             screen_options = ["Pantalla 1 (Principal)", "Pantalla 2 (Secundaria)"]
@@ -219,7 +232,6 @@ class StopwatchApp:
         def save_and_close():
             self.save_config()
             settings_win.destroy()
-            
             if self.display_window and tk.Toplevel.winfo_exists(self.display_window):
                 self.display_window.destroy()
             self.open_second_screen()
@@ -240,6 +252,8 @@ class StopwatchApp:
         link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/Eliezer-Cabrales/Crono"))
         
         ttk.Button(help_win, text="Cerrar", command=help_win.destroy).pack(pady=10)
+
+    # ================== MÉTODOS DE LA TABLA ==================
 
     def show_message(self):
         texto = self.msg_var.get().strip()
@@ -415,7 +429,7 @@ class StopwatchApp:
         self.update_interfaces()
 
     # ==========================================================
-    # LÓGICA DE PANTALLA EXTENDIDA CORREGIDA
+    # LÓGICA DE PANTALLA EXTENDIDA NATIVA (CERO CHAPUZAS)
     # ==========================================================
     def open_second_screen(self):
         if self.display_window and tk.Toplevel.winfo_exists(self.display_window):
@@ -424,34 +438,38 @@ class StopwatchApp:
         self.display_window = tk.Toplevel(self.root)
         self.display_window.title("Pantalla de Proyección")
         self.display_window.configure(bg="black")
-        
         self.display_window.bind("<Escape>", lambda e: self.display_window.destroy())
         
         selected_string = self.target_monitor.get()
         
-        # Expresión regular que captura ancho (1), alto (2), X (3) e Y (4)
-        match = re.search(r'\((\d+)x(\d+)([+-]\d+)([+-]\d+)\)', selected_string)
+        # Extraemos las coordenadas X e Y reales de la pantalla objetivo
+        match = re.search(r'(\d+)x(\d+)([+-]\d+)([+-]\d+)', selected_string)
         
         if match:
-            width = match.group(1)
-            height = match.group(2)
-            x_coord = match.group(3)
-            y_coord = match.group(4)
+            x_coord = int(match.group(3))
+            y_coord = int(match.group(4))
             
-            # TRUCO INFALIBLE: Quitamos los bordes (overrideredirect) y le asignamos el tamaño exacto 
-            # de la pantalla extendida en sus coordenadas exactas. Esto evita el bug de Tkinter.
-            self.display_window.overrideredirect(True)
-            self.display_window.geometry(f"{width}x{height}{x_coord}{y_coord}")
+            # PASO 1: Teletransportamos la ventana a las coordenadas internas del monitor deseado.
+            # Al darle un offset (+100px), garantizamos que Windows la reconozca como "perteneciente" a ese monitor.
+            offset_x = x_coord + 100
+            offset_y = y_coord + 100
+            
+            # La dibujamos primero de tamaño normal para que Windows asimile su posición física
+            self.display_window.geometry(f"400x300+{offset_x}+{offset_y}")
+            
+            # PASO 2: Forzamos a Windows a actualizar los gráficos y registrar el monitor
+            self.display_window.update() 
+            
+            # PASO 3: Ahora sí. Ejecutamos el Fullscreen nativo. 
+            # Como la ventana ya está en el monitor correcto, Windows hará el encaje milimétrico él solo.
+            self.display_window.attributes("-fullscreen", True)
         else:
-            # Plan B si no se detectaron bien las pantallas
-            if "Pantalla 2" in selected_string:
-                self.display_window.overrideredirect(True)
-                self.display_window.geometry("1920x1080+1920+0")
-            else:
-                self.display_window.attributes("-fullscreen", True)
+            # Fallback seguro
+            self.display_window.attributes("-fullscreen", True)
         
         self.display_window.focus_set()
         
+        # Interfaz de la ventana de proyección
         container = tk.Frame(self.display_window, bg="black")
         container.pack(expand=True)
         
@@ -474,6 +492,8 @@ class StopwatchApp:
         self.display_msg_label.pack(pady=20)
         
         self.update_interfaces()
+
+    # ================== CONTROL DEL MOTOR ==================
 
     def toggle(self):
         if self.is_running:
