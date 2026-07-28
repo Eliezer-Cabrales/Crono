@@ -8,7 +8,7 @@ import json
 import ctypes
 from scraper import get_meeting_data
 
-# Solución DPI para Windows 11
+# Solución DPI para Windows 11 (Evita que el zoom del 125% o 150% mueva la pantalla)
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
@@ -35,8 +35,10 @@ class StopwatchApp:
         self.last_update_time = 0.0
         self._drag_item = None
 
+        # Detectar las pantallas físicas conectadas en este momento
         current_screens = self.get_current_screens()
 
+        # Cargar configuración si existe
         saved_monitor = ""
         if os.path.exists(self.config_file):
             try:
@@ -49,6 +51,7 @@ class StopwatchApp:
             except Exception:
                 pass
 
+        # Decidir en qué pantalla abrir por defecto (la guardada o la última conectada)
         if saved_monitor in current_screens:
             self.target_monitor.set(saved_monitor)
         else:
@@ -163,6 +166,7 @@ class StopwatchApp:
             self.tree.selection_set(first_item)
             self.on_assignment_selected(None)
 
+        # Auto-Inicia la segunda pantalla en el monitor seleccionado
         self.root.after(500, self.open_second_screen)
 
     def get_current_screens(self):
@@ -410,6 +414,9 @@ class StopwatchApp:
             self.time_elapsed = 0.0
         self.update_interfaces()
 
+    # ==========================================================
+    # LÓGICA DE PANTALLA EXTENDIDA CORREGIDA
+    # ==========================================================
     def open_second_screen(self):
         if self.display_window and tk.Toplevel.winfo_exists(self.display_window):
             return
@@ -422,21 +429,26 @@ class StopwatchApp:
         
         selected_string = self.target_monitor.get()
         
-        # Extracción mejorada de coordenadas absolutas de pantalla virtual extendida
-        match = re.search(r'\(\d+x\d+([+-]\d+)([+-]\d+)\)', selected_string)
+        # Expresión regular que captura ancho (1), alto (2), X (3) e Y (4)
+        match = re.search(r'\((\d+)x(\d+)([+-]\d+)([+-]\d+)\)', selected_string)
         
         if match:
-            x_coord = match.group(1)
-            y_coord = match.group(2)
+            width = match.group(1)
+            height = match.group(2)
+            x_coord = match.group(3)
+            y_coord = match.group(4)
             
-            # Forzamos la geometría inicial sobre el escritorio virtual exacto y luego expandimos
-            self.display_window.geometry(f"800x600{x_coord}{y_coord}")
-            self.display_window.update_idletasks()
-            self.display_window.attributes("-fullscreen", True)
+            # TRUCO INFALIBLE: Quitamos los bordes (overrideredirect) y le asignamos el tamaño exacto 
+            # de la pantalla extendida en sus coordenadas exactas. Esto evita el bug de Tkinter.
+            self.display_window.overrideredirect(True)
+            self.display_window.geometry(f"{width}x{height}{x_coord}{y_coord}")
         else:
-            # Fallback por defecto si hubiera algún problema de lectura
-            self.display_window.geometry("800x600+0+0")
-            self.display_window.attributes("-fullscreen", True)
+            # Plan B si no se detectaron bien las pantallas
+            if "Pantalla 2" in selected_string:
+                self.display_window.overrideredirect(True)
+                self.display_window.geometry("1920x1080+1920+0")
+            else:
+                self.display_window.attributes("-fullscreen", True)
         
         self.display_window.focus_set()
         
