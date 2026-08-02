@@ -224,8 +224,18 @@ class StopwatchApp(QWidget):
         main_layout = QVBoxLayout()
         
         top_bar = QHBoxLayout()
+        
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(0)
+        
         title = QLabel("<b>Rahab</b>")
         title.setStyleSheet("font-size: 16px;")
+
+        subtitle = QLabel("(Esta aplicacion esta creada exclusivamente para el Salón del Reino de los Testigos de Jehová de Chiclana de la Frontera)")
+        subtitle.setStyleSheet("font-size: 8px;")
+        
+        title_layout.addWidget(title)
+        title_layout.addWidget(subtitle)
         
         btn_help = QPushButton("ℹ Ayuda")
         btn_help.clicked.connect(self.open_help)
@@ -233,10 +243,11 @@ class StopwatchApp(QWidget):
         btn_settings = QPushButton("⚙ Ajustes")
         btn_settings.clicked.connect(self.open_settings)
         
-        top_bar.addWidget(title)
+        top_bar.addLayout(title_layout)
         top_bar.addStretch()
         top_bar.addWidget(btn_help)
         top_bar.addWidget(btn_settings)
+        
         main_layout.addLayout(top_bar)
         
         content_layout = QHBoxLayout()
