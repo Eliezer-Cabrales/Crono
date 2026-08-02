@@ -13,6 +13,8 @@ from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
 from scraper import get_meeting_data
 
+FONT_FAMILY = "Helvetica, Arial, sans-serif"
+
 class ScraperThread(QThread):
     data_fetched = pyqtSignal(list, bool)
 
@@ -40,7 +42,7 @@ class DisplayWindow(QWidget):
         
         self.clock_label = QLabel("00:00")
         self.clock_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.clock_label.setStyleSheet("font-size: 150px; font-weight: bold; color: white; font-family: 'Segoe UI', Arial, sans-serif; font-feature-settings: 'tnum';")
+        self.clock_label.setStyleSheet(f"font-size: 150px; font-weight: bold; color: white; font-family: {FONT_FAMILY};")
         
         self.msg_label = QLabel("")
         self.msg_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -145,6 +147,7 @@ class StopwatchApp(QWidget):
         self.target_monitor_idx = -1 
         
         self.is_running = False
+        self.active_row_index = -1
         self.time_elapsed = 0.0       
         self.time_left = 0.0          
         self.total_duration = 0.0     
@@ -182,7 +185,7 @@ class StopwatchApp(QWidget):
         for item in raw_data:
             self.assignments.append({
                 "title": item["title"],
-                "duration_mins": float(item.get("duration_mins", 0)),
+                "duration_mins": int(float(item.get("duration_mins", 0))),
                 "actual_seconds": 0.0  
             })
             
@@ -291,7 +294,7 @@ class StopwatchApp(QWidget):
         
         self.local_clock = QLabel("00:00")
         self.local_clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.local_clock.setStyleSheet("font-size: 48px; font-weight: bold; color: #3399FF; font-family: 'Segoe UI', Arial, sans-serif; font-feature-settings: 'tnum';")
+        self.local_clock.setStyleSheet(f"font-size: 48px; font-weight: bold; color: #3399FF; font-family: {FONT_FAMILY};")
         right_panel.addWidget(self.local_clock)
         
         btn_toggle = QPushButton("Iniciar / Parar")
@@ -339,7 +342,7 @@ class StopwatchApp(QWidget):
         self.table.setRowCount(len(self.assignments))
         for row, item in enumerate(self.assignments):
             self.table.setItem(row, 0, QTableWidgetItem(item['title']))
-            self.table.setItem(row, 1, QTableWidgetItem(f"{item['duration_mins']} min"))
+            self.table.setItem(row, 1, QTableWidgetItem(f"{int(item['duration_mins'])} min"))
             
             secs = item['actual_seconds']
             m, s = int(secs // 60), int(secs % 60)
@@ -351,11 +354,12 @@ class StopwatchApp(QWidget):
         self.table.blockSignals(False)
 
     def on_assignment_selected(self):
+        if self.is_running:
+            return
+            
         row = self.table.currentRow()
         if row >= 0:
             selected_task = self.assignments[row]
-            self.is_running = False
-            self.timer.stop()
             self.total_duration = float(selected_task['duration_mins'] * 60)
             self.reset_timer_state()
 
@@ -365,7 +369,7 @@ class StopwatchApp(QWidget):
             title, dur = dialog.get_data()
             if title and dur:
                 try:
-                    self.assignments.append({"title": title, "duration_mins": float(dur), "actual_seconds": 0.0})
+                    self.assignments.append({"title": title, "duration_mins": int(float(dur)), "actual_seconds": 0.0})
                     self.refresh_table()
                     self.table.selectRow(len(self.assignments) - 1)
                 except ValueError:
@@ -375,13 +379,13 @@ class StopwatchApp(QWidget):
         row = self.table.currentRow()
         if row >= 0:
             task = self.assignments[row]
-            dialog = AddEditDialog(self, task['title'], str(task['duration_mins']))
+            dialog = AddEditDialog(self, task['title'], str(int(task['duration_mins'])))
             if dialog.exec():
                 title, dur = dialog.get_data()
                 if title and dur:
                     try:
                         self.assignments[row]['title'] = title
-                        self.assignments[row]['duration_mins'] = float(dur)
+                        self.assignments[row]['duration_mins'] = int(float(dur))
                         self.refresh_table()
                         self.on_assignment_selected()
                     except ValueError:
@@ -472,17 +476,26 @@ class StopwatchApp(QWidget):
             self.is_running = False
             self.timer.stop()
             
-            row = self.table.currentRow()
-            if row >= 0 and row < self.table.rowCount() - 1:
-                self.table.selectRow(row + 1)
+            next_row = self.active_row_index + 1
+            if 0 <= next_row < self.table.rowCount():
+                self.table.selectRow(next_row)
                 
         else:
-            self.is_running = True
-            self.last_update_time = time.time()
-            self.timer.start(100)
+            row = self.table.currentRow()
+            if row >= 0:
+                self.active_row_index = row
+                selected_task = self.assignments[self.active_row_index]
+                self.total_duration = float(selected_task['duration_mins'] * 60)
+                
+                self.assignments[self.active_row_index]['actual_seconds'] = 0.0
+                self.refresh_table()
+                
+                self.is_running = True
+                self.last_update_time = time.time()
+                self.timer.start(100)
 
     def run_clock_engine(self):
-        if not self.is_running:
+        if not self.is_running or self.active_row_index < 0 or self.active_row_index >= len(self.assignments):
             return
             
         current_time = time.time()
@@ -494,15 +507,13 @@ class StopwatchApp(QWidget):
         else:
             self.time_elapsed += elapsed
             
-        row = self.table.currentRow()
-        if row >= 0:
-            self.assignments[row]['actual_seconds'] += elapsed
-            secs = self.assignments[row]['actual_seconds']
-            m, s = int(secs // 60), int(secs % 60)
-            
-            item = self.table.item(row, 2)
-            if item:
-                item.setText(f"{m:02d}:{s:02d}")
+        self.assignments[self.active_row_index]['actual_seconds'] += elapsed
+        secs = self.assignments[self.active_row_index]['actual_seconds']
+        m, s = int(secs // 60), int(secs % 60)
+        
+        item = self.table.item(self.active_row_index, 2)
+        if item:
+            item.setText(f"{m:02d}:{s:02d}")
         
         self.update_interfaces()
 
@@ -533,8 +544,8 @@ class StopwatchApp(QWidget):
             display_color = "white"
 
         self.local_clock.setText(time_string)
-        self.local_clock.setStyleSheet(f"font-size: 48px; font-weight: bold; color: {local_color}; font-family: 'Segoe UI', Arial, sans-serif; font-feature-settings: 'tnum';")
+        self.local_clock.setStyleSheet(f"font-size: 48px; font-weight: bold; color: {local_color}; font-family: {FONT_FAMILY};")
         
         if self.display_window and self.display_window.isVisible():
             self.display_window.clock_label.setText(time_string)
-            self.display_window.clock_label.setStyleSheet(f"font-size: 180px; font-weight: bold; color: {display_color}; font-family: 'Segoe UI', Arial, sans-serif; font-feature-settings: 'tnum';")
+            self.display_window.clock_label.setStyleSheet(f"font-size: 180px; font-weight: bold; color: {display_color}; font-family: {FONT_FAMILY};")
