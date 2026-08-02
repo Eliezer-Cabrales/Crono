@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QHeaderView, QGroupBox, QLineEdit, QDialog, 
                              QRadioButton, QComboBox, QMessageBox, QAbstractItemView,
                              QApplication)
-from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal, QTime
 from PyQt6.QtGui import QIcon
 from scraper import get_meeting_data
 
@@ -37,20 +37,46 @@ class DisplayWindow(QWidget):
         self.setWindowTitle("Pantalla de Proyección")
         self.setStyleSheet("background-color: black;")
         
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout = QVBoxLayout()
+        
+        # Barra superior con la hora actual en la esquina superior derecha
+        top_bar = QHBoxLayout()
+        top_bar.addStretch()
+        
+        self.real_time_label = QLabel(QTime.currentTime().toString("hh:mm:ss"))
+        # --- TAMAÑO DE LA HORA AUMENTADO ---
+        self.real_time_label.setStyleSheet(f"font-size: 65px; font-weight: bold; color: white; font-family: {FONT_FAMILY}; padding: 10px 30px 0px 0px;")
+        top_bar.addWidget(self.real_time_label)
+        
+        main_layout.addLayout(top_bar)
+        
+        # Layout central para el cronómetro y los mensajes
+        center_layout = QVBoxLayout()
+        center_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.clock_label = QLabel("00:00")
         self.clock_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.clock_label.setStyleSheet(f"font-size: 150px; font-weight: bold; color: white; font-family: {FONT_FAMILY};")
+        # --- TAMAÑO INICIAL DEL CRONÓMETRO AUMENTADO ---
+        self.clock_label.setStyleSheet(f"font-size: 250px; font-weight: bold; color: white; font-family: {FONT_FAMILY};")
         
         self.msg_label = QLabel("")
         self.msg_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.msg_label.setStyleSheet("font-size: 60px; font-weight: bold; color: yellow;")
         
-        layout.addWidget(self.clock_label)
-        layout.addWidget(self.msg_label)
-        self.setLayout(layout)
+        center_layout.addWidget(self.clock_label)
+        center_layout.addWidget(self.msg_label)
+        
+        main_layout.addLayout(center_layout)
+        main_layout.setStretch(1, 1)
+        self.setLayout(main_layout)
+
+        # Temporizador para actualizar la hora actual cada segundo
+        self.real_time_timer = QTimer(self)
+        self.real_time_timer.timeout.connect(self.update_real_time)
+        self.real_time_timer.start(1000)
+
+    def update_real_time(self):
+        self.real_time_label.setText(QTime.currentTime().toString("hh:mm:ss"))
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
@@ -147,6 +173,7 @@ class StopwatchApp(QWidget):
         self.target_monitor_idx = -1 
         
         self.is_running = False
+        self.is_msg_visible = False
         self.active_row_index = -1
         self.time_elapsed = 0.0       
         self.time_left = 0.0          
@@ -234,7 +261,7 @@ class StopwatchApp(QWidget):
         title = QLabel("<b>Rahab</b>")
         title.setStyleSheet("font-size: 16px;")
 
-        subtitle = QLabel("(Esta aplicacion esta creada exclusivamente para el Salón del Reino de los Testigos de Jehová de Chiclana de la Frontera)")
+        subtitle = QLabel("(Esta aplicación está creada exclusivamente para el Salón del Reino de los Testigos de Jehová de Chiclana de la Frontera)")
         subtitle.setStyleSheet("font-size: 8px;")
         
         title_layout.addWidget(title)
@@ -297,9 +324,9 @@ class StopwatchApp(QWidget):
         self.local_clock.setStyleSheet(f"font-size: 48px; font-weight: bold; color: #3399FF; font-family: {FONT_FAMILY};")
         right_panel.addWidget(self.local_clock)
         
-        btn_toggle = QPushButton("Iniciar / Parar")
-        btn_toggle.setMinimumHeight(40)
-        btn_toggle.clicked.connect(self.toggle)
+        self.btn_toggle = QPushButton("Iniciar")
+        self.btn_toggle.setMinimumHeight(40)
+        self.btn_toggle.clicked.connect(self.toggle)
         
         btn_reset = QPushButton("🔄 Reiniciar")
         btn_reset.setMinimumHeight(40)
@@ -309,25 +336,20 @@ class StopwatchApp(QWidget):
         btn_screen.setMinimumHeight(40)
         btn_screen.clicked.connect(self.open_second_screen)
         
-        right_panel.addWidget(btn_toggle)
+        right_panel.addWidget(self.btn_toggle)
         right_panel.addWidget(btn_reset)
         right_panel.addSpacing(15)
         right_panel.addWidget(btn_screen)
         
-        msg_group = QGroupBox("Mensaje en Proyector")
+        msg_group = QGroupBox("Mensaje para el discursante")
         msg_layout = QVBoxLayout()
         self.msg_input = QLineEdit()
         msg_layout.addWidget(self.msg_input)
         
-        msg_btns = QHBoxLayout()
-        btn_show = QPushButton("Mostrar")
-        btn_hide = QPushButton("Ocultar")
-        btn_show.clicked.connect(self.show_message)
-        btn_hide.clicked.connect(self.hide_message)
-        msg_btns.addWidget(btn_show)
-        msg_btns.addWidget(btn_hide)
+        self.btn_msg_toggle = QPushButton("Mostrar")
+        self.btn_msg_toggle.clicked.connect(self.toggle_message)
+        msg_layout.addWidget(self.btn_msg_toggle)
         
-        msg_layout.addLayout(msg_btns)
         msg_group.setLayout(msg_layout)
         
         right_panel.addWidget(msg_group)
@@ -412,14 +434,24 @@ class StopwatchApp(QWidget):
             self.refresh_table()
             self.table.selectRow(row+1)
 
+    def toggle_message(self):
+        if self.is_msg_visible:
+            self.hide_message()
+        else:
+            self.show_message()
+
     def show_message(self):
         if self.display_window and self.display_window.isVisible():
             self.display_window.msg_label.setText(self.msg_input.text().strip())
+        self.is_msg_visible = True
+        self.btn_msg_toggle.setText("Ocultar")
 
     def hide_message(self):
         self.msg_input.setText("")
         if self.display_window and self.display_window.isVisible():
             self.display_window.msg_label.setText("")
+        self.is_msg_visible = False
+        self.btn_msg_toggle.setText("Mostrar")
 
     def open_help(self):
         webbrowser.open_new("https://github.com/Eliezer-Cabrales/Crono")
@@ -465,6 +497,8 @@ class StopwatchApp(QWidget):
     def reset_timer_state(self):
         self.is_running = False
         self.timer.stop()
+        if hasattr(self, 'btn_toggle'):
+            self.btn_toggle.setText("Iniciar")
         if self.timer_mode == "Regresiva":
             self.time_left = self.total_duration
         else:
@@ -475,6 +509,7 @@ class StopwatchApp(QWidget):
         if self.is_running:
             self.is_running = False
             self.timer.stop()
+            self.btn_toggle.setText("Iniciar")
             
             next_row = self.active_row_index + 1
             if 0 <= next_row < self.table.rowCount():
@@ -491,6 +526,7 @@ class StopwatchApp(QWidget):
                 self.refresh_table()
                 
                 self.is_running = True
+                self.btn_toggle.setText("Parar")
                 self.last_update_time = time.time()
                 self.timer.start(100)
 
@@ -548,4 +584,5 @@ class StopwatchApp(QWidget):
         
         if self.display_window and self.display_window.isVisible():
             self.display_window.clock_label.setText(time_string)
-            self.display_window.clock_label.setStyleSheet(f"font-size: 180px; font-weight: bold; color: {display_color}; font-family: {FONT_FAMILY};")
+            # --- TAMAÑO DEL CRONÓMETRO DURANTE LA MARCHA AUMENTADO ---
+            self.display_window.clock_label.setStyleSheet(f"font-size: 280px; font-weight: bold; color: {display_color}; font-family: {FONT_FAMILY};")
