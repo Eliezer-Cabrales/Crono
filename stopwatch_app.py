@@ -38,9 +38,9 @@ class DisplayWindow(QWidget):
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        self.clock_label = QLabel("00:00.00")
+        self.clock_label = QLabel("00:00")
         self.clock_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.clock_label.setStyleSheet("font-size: 150px; font-weight: bold; color: white;")
+        self.clock_label.setStyleSheet("font-size: 150px; font-weight: bold; color: white; font-family: 'Segoe UI', Arial, sans-serif; font-feature-settings: 'tnum';")
         
         self.msg_label = QLabel("")
         self.msg_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -289,9 +289,9 @@ class StopwatchApp(QWidget):
         right_panel = QVBoxLayout()
         right_panel.addWidget(QLabel("<b>Tiempo:</b>"))
         
-        self.local_clock = QLabel("00:00.00")
+        self.local_clock = QLabel("00:00")
         self.local_clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.local_clock.setStyleSheet("font-size: 48px; font-weight: bold; color: #3399FF;")
+        self.local_clock.setStyleSheet("font-size: 48px; font-weight: bold; color: #3399FF; font-family: 'Segoe UI', Arial, sans-serif; font-feature-settings: 'tnum';")
         right_panel.addWidget(self.local_clock)
         
         btn_toggle = QPushButton("Iniciar / Parar")
@@ -479,7 +479,7 @@ class StopwatchApp(QWidget):
         else:
             self.is_running = True
             self.last_update_time = time.time()
-            self.timer.start(10)
+            self.timer.start(100)
 
     def run_clock_engine(self):
         if not self.is_running:
@@ -518,10 +518,9 @@ class StopwatchApp(QWidget):
         
         minutes = int(display_seconds // 60)
         seconds = int(display_seconds % 60)
-        hundredths = int((display_seconds % 1) * 100)
         
         sign = "-" if active_seconds < 0 and self.timer_mode == "Regresiva" else ""
-        time_string = f"{sign}{minutes:02d}:{seconds:02d}.{hundredths:02d}"
+        time_string = f"{sign}{minutes:02d}:{seconds:02d}"
         
         if remaining_time <= 0: 
             local_color = "red"
@@ -534,8 +533,8 @@ class StopwatchApp(QWidget):
             display_color = "white"
 
         self.local_clock.setText(time_string)
-        self.local_clock.setStyleSheet(f"font-size: 48px; font-weight: bold; color: {local_color};")
+        self.local_clock.setStyleSheet(f"font-size: 48px; font-weight: bold; color: {local_color}; font-family: 'Segoe UI', Arial, sans-serif; font-feature-settings: 'tnum';")
         
         if self.display_window and self.display_window.isVisible():
             self.display_window.clock_label.setText(time_string)
-            self.display_window.clock_label.setStyleSheet(f"font-size: 180px; font-weight: bold; color: {display_color};")
+            self.display_window.clock_label.setStyleSheet(f"font-size: 180px; font-weight: bold; color: {display_color}; font-family: 'Segoe UI', Arial, sans-serif; font-feature-settings: 'tnum';")
